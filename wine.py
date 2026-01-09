@@ -2,8 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import seaborn as sns
-import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
@@ -50,7 +48,6 @@ if page == "Dashboard":
     st.title("📊 Wine Analytics Dashboard")
 
     col1, col2, col3 = st.columns(3)
-
     col1.metric("Liczba win", wine.shape[0])
     col2.metric("Średnia jakość", round(wine["quality"].mean(), 2))
     col3.metric("Liczba pairingów", pairings.shape[0])
@@ -60,17 +57,16 @@ if page == "Dashboard":
     fig = px.histogram(
         wine,
         x="quality",
-        nbins=10,
-        title="Rozkład jakości wina",
-        color="quality"
+        color="quality",
+        title="Rozkład jakości wina"
     )
     st.plotly_chart(fig, use_container_width=True)
 
     fig2 = px.box(
         wine,
-        y="alcohol",
         x="quality",
-        title="Zawartość alkoholu vs jakość"
+        y="alcohol",
+        title="Zawartość alkoholu vs jakość wina"
     )
     st.plotly_chart(fig2, use_container_width=True)
 
@@ -82,24 +78,23 @@ elif page == "Analiza jakości wina":
 
     feature = st.selectbox(
         "Wybierz cechę",
-        wine.columns[:-1]
+        wine.drop(columns="quality").columns
     )
 
     fig = px.scatter(
         wine,
         x=feature,
         y="quality",
-        trendline="ols",
-        title=f"{feature} vs jakość"
+        title=f"{feature} vs jakość wina"
     )
     st.plotly_chart(fig, use_container_width=True)
 
     fig2 = px.violin(
         wine,
-        y=feature,
         x="quality",
+        y=feature,
         box=True,
-        title=f"Rozkład {feature} wg jakości"
+        title=f"Rozkład cechy: {feature}"
     )
     st.plotly_chart(fig2, use_container_width=True)
 
@@ -107,15 +102,15 @@ elif page == "Analiza jakości wina":
 # CORRELATIONS
 # --------------------------------------------------
 elif page == "Korelacje":
-    st.title("🔗 Korelacje cech")
+    st.title("🔗 Korelacje cech chemicznych")
 
-    corr = wine.corr()
+    corr = wine.corr(numeric_only=True)
 
     fig = px.imshow(
         corr,
         text_auto=".2f",
-        title="Macierz korelacji",
-        color_continuous_scale="RdBu_r"
+        color_continuous_scale="RdBu_r",
+        title="Macierz korelacji"
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -125,7 +120,7 @@ elif page == "Korelacje":
 elif page == "PCA":
     st.title("📉 Analiza PCA")
 
-    X = wine.drop("quality", axis=1)
+    X = wine.drop(columns="quality")
     X_scaled = StandardScaler().fit_transform(X)
 
     pca = PCA(n_components=2)
@@ -146,9 +141,10 @@ elif page == "PCA":
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    st.write(
-        "Wyjaśniona wariancja:",
-        pca.explained_variance_ratio_
+    st.info(
+        f"Wyjaśniona wariancja: "
+        f"{round(pca.explained_variance_ratio_[0]*100,1)}% + "
+        f"{round(pca.explained_variance_ratio_[1]*100,1)}%"
     )
 
 # --------------------------------------------------
@@ -160,17 +156,17 @@ elif page == "Food Pairing Explorer":
     cuisine = st.multiselect(
         "Wybierz kuchnię",
         pairings["cuisine"].unique(),
-        default=["French", "Italian"]
+        default=pairings["cuisine"].unique()[:2]
     )
 
-    quality = st.slider(
+    min_quality = st.slider(
         "Minimalna jakość pairingu",
         1, 5, 3
     )
 
     filtered = pairings[
         (pairings["cuisine"].isin(cuisine)) &
-        (pairings["pairing_quality"] >= quality)
+        (pairings["pairing_quality"] >= min_quality)
     ]
 
     fig = px.bar(
@@ -181,7 +177,7 @@ elif page == "Food Pairing Explorer":
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    st.dataframe(filtered.head(50))
+    st.dataframe(filtered.head(50), use_container_width=True)
 
 # --------------------------------------------------
 # RECOMMENDATIONS
@@ -190,19 +186,22 @@ elif page == "Rekomendacje":
     st.title("🤖 Rekomendacje wino–jedzenie")
 
     wine_type = st.selectbox(
-        "Typ wina",
+        "Wybierz typ wina",
         pairings["wine_type"].unique()
     )
 
-    top = pairings[
-        pairings["wine_type"] == wine_type
-    ].sort_values(
-        "pairing_quality",
-        ascending=False
-    ).head(10)
+    recommendations = (
+        pairings[pairings["wine_type"] == wine_type]
+        .sort_values("pairing_quality", ascending=False)
+        .head(10)
+    )
 
-    for _, row in top.iterrows():
+    for _, row in recommendations.iterrows():
         st.success(
-            f"🍷 **{row['wine_type']}** + 🍽️ **{row['food']}** "
-            f"({row['cuisine']}) — ⭐ {row['quality_label']}"
+            f"""
+            🍷 **{row['wine_type']}**
+            🌍 Kuchnia: **{row['cuisine']}**
+            ⭐ Jakość: **{row['quality_label']}**
+            📝 {row['description']}
+            """
         )
