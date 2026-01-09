@@ -3,10 +3,10 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from mpl_toolkits.mplot3d import Axes3D
+import plotly.express as px
 
 # =========================================================
-# CONFIG
+# KONFIGURACJA STRONY
 # =========================================================
 st.set_page_config(
     page_title="Wine Analytics – Hurtownik → Restaurator",
@@ -16,19 +16,18 @@ st.set_page_config(
 
 st.title("🍷 Wine Analytics – narzędzie dla hurtownika wina")
 st.caption(
-    "Aplikacja wspierająca dobór win i rekomendacji food pairing "
-    "dla restauratorów na podstawie danych."
+    "Analiza jakości win oraz rekomendacje food pairing "
+    "wspierające sprzedaż dla restauratorów."
 )
 
 # =========================================================
-# LOAD DATA
+# WCZYTYWANIE DANYCH
 # =========================================================
 @st.cache_data
 def load_data():
-    return (
-        pd.read_csv("winequality-red.csv"),
-        pd.read_csv("wine_food_pairings.csv")
-    )
+    wine = pd.read_csv("winequality-red.csv")
+    pairings = pd.read_csv("wine_food_pairings.csv")
+    return wine, pairings
 
 wine_df, pairings_df = load_data()
 
@@ -36,7 +35,7 @@ wine_df, pairings_df = load_data()
 # SIDEBAR
 # =========================================================
 section = st.sidebar.radio(
-    "Sekcja:",
+    "Wybierz sekcję:",
     [
         "Eksploracja danych",
         "Filtrowanie oferty",
@@ -47,7 +46,7 @@ section = st.sidebar.radio(
 )
 
 # =========================================================
-# 1️⃣ EKSPLORACJA DANYCH
+# 1. EKSPLORACJA DANYCH
 # =========================================================
 if section == "Eksploracja danych":
     st.header("📊 Podstawowa eksploracja danych")
@@ -64,7 +63,7 @@ if section == "Eksploracja danych":
         c3.metric("Duplikaty", wine_df.duplicated().sum())
 
         with st.expander("Braki danych i typy"):
-            st.write("Braki:")
+            st.write("Braki danych:")
             st.write(wine_df.isnull().sum())
             st.write("Typy danych:")
             st.write(wine_df.dtypes)
@@ -83,13 +82,14 @@ if section == "Eksploracja danych":
             st.write(pairings_df.dtypes)
 
 # =========================================================
-# 2️⃣ FILTROWANIE
+# 2. FILTROWANIE
 # =========================================================
 elif section == "Filtrowanie oferty":
     st.header("🔎 Filtrowanie oferty hurtownika")
 
     tab1, tab2 = st.tabs(["🍷 Wina", "🍽️ Pairingi"])
 
+    # -------- WINA --------
     with tab1:
         q_min, q_max = st.slider(
             "Zakres jakości:",
@@ -118,24 +118,35 @@ elif section == "Filtrowanie oferty":
             & wine_df[feature].between(f_min, f_max)
         ]
 
-        st.success(f"Liczba win: {filt.shape[0]}")
+        st.success(f"Liczba win po filtrze: {filt.shape[0]}")
         st.dataframe(filt.head(20))
-        st.write(filt[[feature, "quality"]].describe().loc[["mean", "min", "max"]])
+        st.write(
+            filt[[feature, "quality"]]
+            .describe()
+            .loc[["mean", "min", "max"]]
+        )
 
+    # -------- PAIRINGI --------
     with tab2:
         wine_type = st.multiselect(
             "Typ wina:",
             sorted(pairings_df.wine_type.unique())
         )
+        food_cat = st.multiselect(
+            "Kategoria jedzenia:",
+            sorted(pairings_df.food_category.unique())
+        )
         cuisine = st.multiselect(
             "Kuchnia:",
             sorted(pairings_df.cuisine.unique())
         )
-        min_q = st.slider("Minimalna jakość:", 1, 5, 3)
+        min_q = st.slider("Minimalna jakość parowania:", 1, 5, 3)
 
         filt = pairings_df[pairings_df.pairing_quality >= min_q]
         if wine_type:
             filt = filt[filt.wine_type.isin(wine_type)]
+        if food_cat:
+            filt = filt[filt.food_category.isin(food_cat)]
         if cuisine:
             filt = filt[filt.cuisine.isin(cuisine)]
 
@@ -143,13 +154,13 @@ elif section == "Filtrowanie oferty":
         st.dataframe(filt.head(30))
 
 # =========================================================
-# 3️⃣ ROZKŁADY I PORÓWNANIA
+# 3. ROZKŁADY I PORÓWNANIA
 # =========================================================
 elif section == "Rozkłady i porównania":
-    st.header("📈 Rozkłady i porównania jakości")
+    st.header("📈 Rozkłady i porównania cech wina")
 
     feature = st.selectbox(
-        "Cecha:",
+        "Wybierz cechę:",
         [c for c in wine_df.columns if c != "quality"],
         index=wine_df.columns.get_loc("alcohol") - 1
     )
@@ -186,43 +197,58 @@ elif section == "Rozkłady i porównania":
     st.pyplot(fig)
 
 # =========================================================
-# 4️⃣ WYKRES 3D
+# 4. WIZUALIZACJA 3D – PLOTLY
 # =========================================================
 elif section == "Wizualizacja 3D":
-    st.header("🧊 Profile win – wykres 3D")
+    st.header("🧊 Profile win – interaktywna wizualizacja 3D")
 
-    x = st.selectbox("Oś X:", wine_df.columns[:-1], index=10)
-    y = st.selectbox("Oś Y:", wine_df.columns[:-1], index=1)
-    z = st.selectbox("Oś Z:", wine_df.columns[:-1], index=7)
-
-    fig = plt.figure(figsize=(6, 5))
-    ax = fig.add_subplot(111, projection="3d")
-    sc = ax.scatter(
-        wine_df[x],
-        wine_df[y],
-        wine_df[z],
-        c=wine_df.quality,
-        cmap="viridis",
-        s=20
+    st.write(
+        "Wizualizacja pozwala hurtownikowi zobaczyć "
+        "segmentację win według profilu chemicznego i jakości."
     )
-    fig.colorbar(sc, label="Quality")
-    ax.set_xlabel(x)
-    ax.set_ylabel(y)
-    ax.set_zlabel(z)
-    st.pyplot(fig)
+
+    cols = wine_df.columns.drop("quality").tolist()
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        x = st.selectbox("Oś X", cols, index=cols.index("alcohol"))
+    with c2:
+        y = st.selectbox("Oś Y", cols, index=cols.index("volatile acidity"))
+    with c3:
+        z = st.selectbox("Oś Z", cols, index=cols.index("sulphates"))
+
+    sample_df = wine_df.sample(n=800, random_state=42)
+
+    fig = px.scatter_3d(
+        sample_df,
+        x=x,
+        y=y,
+        z=z,
+        color="quality",
+        opacity=0.7,
+        height=600,
+        title="Profil chemiczny win a jakość"
+    )
+
+    fig.update_layout(
+        margin=dict(l=0, r=0, b=0, t=40),
+        legend_title_text="Quality"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
 
 # =========================================================
-# 5️⃣ WNIOSKI
+# 5. WNIOSKI
 # =========================================================
 elif section == "Wnioski biznesowe":
     st.header("📌 Wnioski dla hurtownika")
 
     st.markdown(
         """
-        - Hurtownik może selekcjonować wina pod konkretne profile restauracji
-        - Wina o wyższej jakości mają wyraźnie inny profil chemiczny
-        - Dane food pairing pozwalają szybko dobrać ofertę pod kuchnię lokalu
-        - Analiza danych wspiera sprzedaż opartą na faktach, nie intuicji
+        - Dane pozwalają segmentować ofertę win według jakości i profilu chemicznego
+        - Hurtownik może proponować wina dopasowane do stylu restauracji
+        - Food pairing wspiera sprzedaż opartą na rekomendacjach
+        - Analiza danych zwiększa trafność decyzji handlowych
         """
     )
 
